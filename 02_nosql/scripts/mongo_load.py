@@ -30,7 +30,7 @@ from common import OFFER_FIELDS
 
 log = logging.getLogger("mongo_load")
 KEY = ("site", "site_product_id", "snapshot_date")
-SITES = {"xprs", "dream2000", "jumia"}
+SITES = {"xprs", "dream2000", "jumia", "elghazawy"}
 CATEGORIES = {"phone", "tv"}
 
 
