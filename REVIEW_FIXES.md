@@ -80,7 +80,7 @@ The GitHub repository still held the skeleton of 26-Oct plus the files of 8-Nov 
 
 Mini end-to-end test (9-Nov): offers of 1-Nov (XPRS, Dream 2000, Jumia) and 9-Nov (XPRS, Dream 2000, El Ghazawy) → MongoDB (mongomock) → warehouse: the El Ghazawy S25 Ultra 12/256 and LG 43LM6370PVA joined the products of the other sites (crosswalk on 4 and 3 sites); the quality check of 9-Nov passes with the DAG's sites and fails without them, as expected.
 
-Still to do: `docs/architecture.png` still shows Jumia; first real El Ghazawy run in Airflow (check the price of a few products by hand on the site).
+`docs/architecture.png` updated the same day (El Ghazawy in place of Jumia; Jumia 27 Oct – 1 Nov only). First real El Ghazawy run (Aya, 9-Nov, her laptop): 347 offers (268 phones, 79 TVs), 0 without a price, 5 of 5 prices checked by hand equal to the site, 347 loaded into MongoDB. Still to do: the first El Ghazawy run inside Airflow.
 
 ## Added on 6-Nov-2026 (instructor's request: three matching levels and a crosswalk)
 
