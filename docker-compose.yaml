@@ -34,6 +34,7 @@ x-airflow-common:
     MONGO_PASSWORD: ${MONGO_PASSWORD:-mongo_password}
     MONGO_DB: catalog
     SCRAPER_CONTACT: ${SCRAPER_CONTACT:-team-email@example.com}
+    OFFER_SITES: ${OFFER_SITES:-xprs,dream2000,jumia,elghazawy}
   volumes:
     - ./05_etl/dags:/opt/airflow/dags
     - ./05_etl/scripts:/opt/airflow/scripts

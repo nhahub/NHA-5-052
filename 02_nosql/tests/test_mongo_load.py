@@ -3,6 +3,7 @@ Offline test of mongo_load.py - no MongoDB server needed (mongomock).
 Run:  pip install mongomock  &&  python 02_nosql/tests/test_mongo_load.py
 """
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -71,6 +72,19 @@ def main():
     print("4. next day = new documents (price history)")
     mongo_load.load_files([write([offer("xprs", "a57:1", 29999.0, day="2026-10-28")])], client=client)
     check("two days of the same offer", db.offers.count_documents({"site_product_id": "a57:1"}) == 2)
+
+    print("5. a new site is accepted only after it is added to OFFER_SITES")
+    new_site = [offer("newsite", "13421", 7999.0)]
+    os.environ.pop("OFFER_SITES", None)
+    r = mongo_load.load_files([write(new_site)], client=client)
+    check("unknown site -> quarantine 'out of scope'", r["quarantine"] == 1 and r["offers"] == 0, r)
+    os.environ["OFFER_SITES"] = "xprs,dream2000,jumia,elghazawy,newsite"
+    try:
+        r = mongo_load.load_files([write(new_site)], client=client)
+    finally:
+        os.environ.pop("OFFER_SITES", None)
+    check("listed site -> offers", r["offers"] == 1 and db.offers.count_documents({"site": "newsite"}) == 1, r)
+    check("and it leaves the quarantine", db.offers_quarantine.count_documents({"site": "newsite"}) == 0)
 
     print(f"\nALL {len(PASSED)} CHECKS PASSED")
 

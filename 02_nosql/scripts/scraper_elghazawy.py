@@ -10,6 +10,9 @@ Same structure as scraper_xprs.py; differences:
   * not Shopify: product cards are read from the HTML page (product link + nearest block that holds a price)
   * a discounted card shows "Save X EGP": that amount is removed so it is never taken as the price
   * 2 seconds between requests
+  * the brand is the first known brand name found in the title ("Smart TV LG 43..." -> LG), not the first word
+  * a price is read with the currency after OR before the number ("12,999 EGP" and "EGP 12,999")
+Reviewed 9-Nov-2026 (brand and price fixes, offline test 02_nosql/tests/test_scraper_elghazawy.py).
 """
 import json
 import logging
@@ -20,7 +23,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from common import OUT_DIR, fetch, new_offer, run_dates, save_raw, discount_pct
+from common import OUT_DIR, BlockedError, fetch, new_offer, run_dates, save_raw, discount_pct  # noqa: F401
 
 SITE = "elghazawy"
 BASE_URL = "https://elghazawy.com"
@@ -35,14 +38,36 @@ CATEGORIES = {
 }   # a product found in two categories is kept once (same product id)
 
 PRODUCT_RE = re.compile(r"/product/(\d{6,})(?:/|$)")
-PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:EGP|LE|ج\.?م|جنيه)", re.I)
+CURRENCY = r"(?:EGP|LE|L\.E\.?|ج\.?\s?م|جنيه)"
+NUMBER = r"\d[\d,]*(?:\.\d+)?"
+PRICE_RE = re.compile(rf"(?:({NUMBER})\s*{CURRENCY}|{CURRENCY}\s*({NUMBER}))", re.I)
+# brands sold in the phone and TV categories (English titles on /en/ pages); the earliest one in the title wins
+BRANDS = {"samsung": "Samsung", "galaxy": "Samsung", "apple": "Apple", "iphone": "Apple", "xiaomi": "Xiaomi", "redmi": "Xiaomi",
+          "poco": "Xiaomi", "oppo": "Oppo", "realme": "Realme", "honor": "Honor", "huawei": "Huawei",
+          "infinix": "Infinix", "tecno": "Tecno", "itel": "itel", "vivo": "Vivo", "nokia": "Nokia",
+          "motorola": "Motorola", "oneplus": "OnePlus", "google": "Google", "lg": "LG", "sharp": "Sharp",
+          "toshiba": "Toshiba", "tornado": "Tornado", "hisense": "Hisense", "haier": "Haier", "tcl": "TCL",
+          "fresh": "Fresh", "ata": "ATA", "armadillo": "Armadillo", "ultra": "Ultra", "sony": "Sony",
+          "philips": "Philips", "panasonic": "Panasonic", "unionaire": "Unionaire", "white point": "White Point",
+          "skyline": "Skyline", "sky line": "Skyline"}
+# words that look like a brand but describe the product: "Ultra HD", "Google TV" (the TV system, not the maker)
+NOT_BRAND_RE = re.compile(r"ultra[\s-]*(?:hd|4k|8k|slim|wide|clear)|google[\s-]*tv", re.I)
+BRAND_RE = re.compile(r"(?<![a-z0-9])(" + "|".join(sorted(map(re.escape, BRANDS), key=len, reverse=True))
+                      + r")(?![a-z0-9])", re.I)
 OUT_OF_STOCK_RE = re.compile(r"out of stock|not available|sold out|غير متوفر|نفذت", re.I)
 log = logging.getLogger(SITE)
 
 
+def brand_of(title):
+    """'Smart TV LG 43 Inch 43LM6370PVA' -> 'LG'; 'Samsung Galaxy S25 Ultra' -> 'Samsung' (earliest brand wins).
+    None when no known brand is in the title (matching.py then uses the first word of the title)."""
+    m = BRAND_RE.search(NOT_BRAND_RE.sub(" ", title or ""))
+    return BRANDS[m.group(1).lower()] if m else None
+
+
 def parse_prices(text):
     """(sale_price, original_price) from the text of one card. Drops the 'Save X' amount (X = original - sale)."""
-    values = [float(m.replace(",", "")) for m in PRICE_RE.findall(text)]
+    values = [float((a or b).replace(",", "")) for a, b in PRICE_RE.findall(text)]
     values = [v for v in values if v >= 100]
     values = [v for v in values if not any(abs(a - b - v) < 1 and v < b for a in values for b in values)]
     if not values:
@@ -98,7 +123,7 @@ def page_offers(html, category_site, snapshot_date, scraped_at, raw_file):
             scraped_at=scraped_at,
             url=item["url"],
             title=title,
-            brand_raw=title.split()[0],
+            brand_raw=brand_of(title),
             category_site=category_site,
             category=CATEGORIES[category_site][1],
             sale_price=sale,

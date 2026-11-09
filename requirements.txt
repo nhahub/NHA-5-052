@@ -1,11 +1,11 @@
 # Python packages for running the scripts and tests outside Airflow (local venv or Colab).
-# Versions are the ones the previous version of the pipeline was tested with (21-Oct-2026).
+# Versions tested 21-Oct-2026; pandas and psycopg2-binary raised on 9-Nov-2026 so they install on Python 3.13 too.
 # Inside Docker, Airflow installs its own copies (see _PIP_ADDITIONAL_REQUIREMENTS in docker-compose.yaml).
-pandas==2.1.4
+pandas==2.2.3
 SQLAlchemy==1.4.52
 requests==2.31.0
 beautifulsoup4==4.12.3
 mysql-connector-python==8.4.0
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 pymongo==4.7.3
 mongomock==4.1.2   # offline tests of the MongoDB loader

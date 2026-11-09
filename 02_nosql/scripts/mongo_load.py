@@ -7,7 +7,7 @@ Target (data dictionary v4.3, sheet NoSQL_MongoDB):
   catalog.offers_quarantine  offers that must not reach the warehouse, with a 'reason' field:
                                'no price'        sale_price missing, 0 or negative (e.g. Dream 2000 A17 5G at 0 on 25-Oct)
                                'no stock state'  in_stock missing
-                               'out of scope'    category not phone / tv, or an unknown site
+                               'out of scope'    category not phone / tv, or a site that is not in OFFER_SITES
 Rules:
   * loading the same file twice never creates duplicates (upsert on the unique key) - the counts stay the same
   * a document missing a key field, or with a field that is not in the data dictionary, is refused and logged
@@ -30,8 +30,14 @@ from common import OFFER_FIELDS
 
 log = logging.getLogger("mongo_load")
 KEY = ("site", "site_product_id", "snapshot_date")
-SITES = {"xprs", "dream2000", "jumia", "elghazawy"}
+DEFAULT_SITES = "xprs,dream2000,jumia,elghazawy"   # jumia kept: its files of 27-Oct..1-Nov can still be loaded
 CATEGORIES = {"phone", "tv"}
+
+
+def sites():
+    """Sites accepted into catalog.offers. A new site (e.g. elghazawy) is added in .env, not in the code:
+    OFFER_SITES=xprs,dream2000,jumia,elghazawy,<new site>  (it also needs its row in dim_site, see 03_dwh/scripts/schema.sql)."""
+    return {s.strip().lower() for s in os.getenv("OFFER_SITES", DEFAULT_SITES).split(",") if s.strip()}
 
 
 def get_db(client=None):
@@ -65,7 +71,7 @@ def _to_date(value):
 
 def reason_of(doc):
     """Why an offer goes to quarantine, or None if it is complete."""
-    if doc.get("site") not in SITES or doc.get("category") not in CATEGORIES:
+    if doc.get("site") not in sites() or doc.get("category") not in CATEGORIES:
         return "out of scope"
     price = doc.get("sale_price")
     if not isinstance(price, (int, float)) or price <= 0:

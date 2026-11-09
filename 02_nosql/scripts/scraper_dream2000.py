@@ -1,5 +1,5 @@
 """
-scraper_dream2000.py - Dream 2000 (dream2000.com), public Shopify JSON.        SKELETON - task A2 (Eng. Aya), due 27-Oct.
+scraper_dream2000.py - Dream 2000 (dream2000.com), public Shopify JSON.        Task A2 (Eng. Aya) - done.
 
 Source:   GET /collections/<handle>/products.json?limit=250&page=N   (checked 22-Oct-2026: returns vendor, variants
           with sku, price, compare_at_price, available). robots.txt blocks only sort/filter URLs.
@@ -8,9 +8,6 @@ Output:   <out_dir>/offers_dream2000_<date>.json  - a list of offer documents (f
 Run:      python scraper_dream2000.py            (all categories)
           python scraper_dream2000.py --sample   (2 pages per category, for the overlap test A1)
 
-What to finish (search for TODO):
-  1. CATEGORIES: checked in the overlap test (25-Oct-2026); add a TV brand collection if a new one appears.
-  2. to_offers(): one offer per variant (each storage option is a separate offer).
 """
 import json
 import logging
@@ -36,22 +33,49 @@ log = logging.getLogger(SITE)
 
 
 def to_offers(product, category_site, snapshot_date, scraped_at, raw_file):
-    """Turn one Shopify product (dict from products.json) into a list of offers, one per variant.
-
-    TODO A2 - for each v in product["variants"]:
-        site_product_id = f'{product["handle"]}:{v["id"]}'
-        url             = f'{BASE_URL}/products/{product["handle"]}?variant={v["id"]}'
-        title           = product["title"] + (' - ' + v["title"] if v["title"] != 'Default Title' else '')
-        brand_raw       = product["vendor"]
-        ean             = v["sku"] if it matches EAN_RE else None
-        model_raw       = v["sku"] if it is not an EAN, else None (the matching step also reads the title)
-        sale_price      = parse_price(v["price"]);  original_price = parse_price(v["compare_at_price"]) if > sale_price
-        discount_pct    = discount_pct(sale_price, original_price)
-        in_stock        = v["available"];  stock_text = None (the JSON has no text)
-        category_site   = category_site;   category = CATEGORIES[category_site];  source_format = "json"
-    and build each document with new_offer(site=SITE, ..., raw_file=raw_file).
-    """
-    raise NotImplementedError("TODO A2: to_offers()")
+    """Turn one Shopify product (dict from products.json) into a list of offers, one per variant."""
+    handle = product.get("handle") or ""
+    title_base = (product.get("title") or "").strip()
+    vendor = (product.get("vendor") or "").strip() or None
+    category = CATEGORIES[category_site]
+    offers = []
+    for v in product.get("variants") or []:
+        vid = v.get("id")
+        if vid is None:
+            continue
+        variant_title = (v.get("title") or "").strip()
+        title = title_base if variant_title in ("", "Default Title") else f"{title_base} - {variant_title}"
+        sku = (v.get("sku") or "").strip()
+        ean = sku if EAN_RE.match(sku) else None
+        model_raw = None if (not sku or ean) else sku
+        sale_price = parse_price(v.get("price"))
+        orig = parse_price(v.get("compare_at_price"))
+        if orig is not None and sale_price is not None and orig <= sale_price:
+            orig = None
+        disc = discount_pct(sale_price, orig)
+        offers.append(new_offer(
+            site=SITE,
+            site_product_id=f"{handle}:{vid}",
+            snapshot_date=snapshot_date,
+            scraped_at=scraped_at,
+            url=f"{BASE_URL}/products/{handle}?variant={vid}",
+            title=title,
+            brand_raw=vendor,
+            model_raw=model_raw,
+            ean=ean,
+            category_site=category_site,
+            category=category,
+            sale_price=sale_price,
+            original_price=orig,
+            discount_pct=disc,
+            currency="EGP",
+            stock_text=None,
+            in_stock=bool(v.get("available", False)),
+            seller=None,
+            source_format="json",
+            raw_file=raw_file,
+        ))
+    return offers
 
 
 def scrape_category(handle, snapshot_date, scraped_at, out_dir, max_pages=MAX_PAGES):

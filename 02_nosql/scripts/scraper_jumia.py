@@ -1,5 +1,5 @@
 """
-scraper_jumia.py - Jumia Egypt (jumia.com.eg), server-rendered HTML marketplace.        SKELETON - task A6 (Eng. Aya), due 29-Oct.
+scraper_jumia.py - Jumia Egypt (jumia.com.eg), server-rendered HTML marketplace.        Task A6 (Eng. Aya) - done.
 
 Permission: robots.txt (checked 22-Oct-2026) permits scraping IF the User-Agent clearly identifies the bot and its owner
             contact and stays under 200 requests per minute (the User-Agent is set in common.py).
@@ -11,12 +11,10 @@ Source:     category pages /mobile-phones/?page=N and /televisions/?page=N (card
 Output:     <out_dir>/offers_jumia_<date>.json, raw HTML under <out_dir>/raw/<date>/jumia/
 Run:        python scraper_jumia.py   |   python scraper_jumia.py --sample   (2 pages per category, for A1)
 
-What to finish (search for TODO):
-  1. find_tiles() and parse_tile(): selectors above work; read one saved raw page for the old price, badge and SKU.
-  2. Exclude air coolers / accessories that appear inside the TV or phone pages (title words), as in the overlap test.
 """
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -35,32 +33,96 @@ CATEGORIES = {
     "/televisions/": "tv",
 }
 log = logging.getLogger(SITE)
+BLOCKED = []         # categories stopped by HTTP 403 in the current run
+
+_SKU_URL_RE = re.compile(r"-(\d+)\.html")
+_MODEL_RE = re.compile(r"\b[A-Z]{0,4}\d{2,4}[A-Z]{1,3}\d{2,5}[A-Z0-9]{0,8}\b")
+_ACCESSORY_WORDS = (
+    "case", "cover", "protector", "charger", "cable",
+    "air conditioner",
+    "\u0645\u0643\u064a\u0641", "\u062a\u0643\u064a\u064a\u0641",
+    "\u063a\u0637\u0627\u0621", "\u062d\u0627\u0641\u0638\u0629",
+    "\u0634\u0627\u062d\u0646", "\u0643\u0627\u0628\u0644",
+)
 
 
 def find_tiles(soup):
-    """Return the product cards of a category page.
-
-    TODO A6: return soup.select("article.prd")   (confirmed 25-Oct-2026)
-    """
-    raise NotImplementedError("TODO A6: find_tiles()")
+    """Return the product cards of a category page."""
+    return soup.select("article.prd")
 
 
 def parse_tile(tile, category_site, snapshot_date, scraped_at, raw_file):
-    """One card -> one offer document (new_offer(...)), or None if the card has no product link.
+    """One card -> one offer document, or None if the card is not a real product."""
+    link = tile.select_one("a.core") or tile.find("a", href=True)
+    if link is None or not link.get("href"):
+        return None
+    href = link["href"]
+    if not href.endswith(".html"):
+        return None
+    url = href if href.startswith("http") else f"{BASE_URL}{href}"
 
-    TODO A6:
-        url             = product link (absolute; product URLs end with .html)
-        site_product_id = the product SKU (data attribute on the card, or the code at the end of the URL)
-        title           = name text;  brand_raw = brand on the card if present, else first word of the title
-        model_raw       = model code found in the title (e.g. 'UA32H5000FUXEG');  ean = None
-        sale_price      = parse_price(price);  original_price = parse_price(old price) if > sale_price
-        discount_pct    = badge value if shown, else discount_pct(sale_price, original_price)
-        stock_text      = visible text if any;  in_stock = True unless the card says out of stock
-        seller          = seller name if the card shows it (marketplace), else None
-        category        = CATEGORIES[category_site];  source_format = "html"
-    Skip sponsored / "inspired by" items only if they have no real brand (keep a note in 02_nosql.md).
-    """
-    raise NotImplementedError("TODO A6: parse_tile()")
+    url_sku = _SKU_URL_RE.search(href)
+    sku = tile.get("data-id") or tile.get("data-sku") or (url_sku.group(1) if url_sku else None)
+    if not sku:
+        return None
+
+    name_el = tile.select_one("h3.name") or tile.select_one(".name")
+    title = name_el.get_text(" ", strip=True) if name_el else ""
+    if not title:
+        return None
+    if any(word in title.lower() for word in _ACCESSORY_WORDS):
+        return None
+
+    price_el = tile.select_one(".prc")
+    sale_price = parse_price(price_el.get_text(" ", strip=True)) if price_el else None
+
+    old_el = tile.select_one(".old")
+    original_price = parse_price(old_el.get_text(" ", strip=True)) if old_el else None
+    if original_price is not None and sale_price is not None and original_price <= sale_price:
+        original_price = None
+    discount = discount_pct(sale_price, original_price)
+
+    badge_el = tile.select_one(".bdg._dsct")
+    if badge_el is not None:
+        badge_text = badge_el.get_text(strip=True).lstrip("-").rstrip("%").strip()
+        if badge_text.isdigit() and 0 <= int(badge_text) < 100:
+            discount = int(badge_text)
+
+    brand_raw = (tile.get("data-brand") or "").strip() or None
+    if brand_raw is None:
+        brand_raw = title.split(" ", 1)[0] or None
+
+    model_match = _MODEL_RE.search(title.upper())
+    model_raw = model_match.group(0) if model_match else None
+
+    stock_el = tile.select_one(".stock")
+    stock_text = stock_el.get_text(" ", strip=True) if stock_el else None
+    if stock_text == "":
+        stock_text = None
+    in_stock = not (stock_text and ("out of stock" in stock_text.lower() or "غير متوفر" in stock_text))
+
+    return new_offer(
+        site=SITE,
+        site_product_id=str(sku),
+        snapshot_date=snapshot_date,
+        scraped_at=scraped_at,
+        url=url,
+        title=title,
+        brand_raw=brand_raw,
+        model_raw=model_raw,
+        ean=None,
+        category_site=category_site,
+        category=CATEGORIES[category_site],
+        sale_price=sale_price,
+        original_price=original_price,
+        discount_pct=discount,
+        currency="EGP",
+        stock_text=stock_text,
+        in_stock=in_stock,
+        seller=None,
+        source_format="html",
+        raw_file=raw_file,
+    )
 
 
 def scrape_category(path, snapshot_date, scraped_at, out_dir, max_pages=MAX_PAGES):
@@ -71,6 +133,7 @@ def scrape_category(path, snapshot_date, scraped_at, out_dir, max_pages=MAX_PAGE
             html = fetch(f"{BASE_URL}{path}?page={page}", delay=DELAY)
         except BlockedError as error:          # the site said no: keep what we have, log it, stop this category
             log.warning("%s stopped at page %d: %s", path, page, error)
+            BLOCKED.append(f"{path} page {page}")
             break
         raw_file = save_raw(html, SITE, f"{path.strip('/').replace('/', '_')}_p{page}.html", snapshot_date, out_dir)
         tiles = find_tiles(BeautifulSoup(html, "html.parser"))
@@ -88,9 +151,13 @@ def run(out_dir=None, sample=False):
     """Scrape every category and write offers_jumia_<date>.json. READY."""
     out_dir = Path(out_dir or OUT_DIR)
     snapshot_date, scraped_at = run_dates()
+    BLOCKED.clear()
     offers = []
     for path in CATEGORIES:
         offers += scrape_category(path, snapshot_date, scraped_at, out_dir, max_pages=2 if sample else MAX_PAGES)
+    if not offers and BLOCKED:
+        # blocked before any product: the DAG must NOT retry (that would visit a site that said no again)
+        raise BlockedError(f"Jumia blocked the scraper before any offer: {', '.join(BLOCKED)}")
     if not offers:
         raise RuntimeError("No offers scraped from Jumia - check the site or the parser")
     out = out_dir / f"offers_{SITE}_{snapshot_date}.json"
