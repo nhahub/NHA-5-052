@@ -119,7 +119,8 @@ GROUP BY GROUPING SETS (
 );
 
 -- 4. Report 4: stock availability per site and category (ROLLUP)
---    Jumia is left out: its category pages list only items that can be bought, so it is always 100% in stock
+--    Jumia and El Ghazawy are left out: their listing pages show only items that can be bought (a sold-out product
+--    disappears from the page; checked on El Ghazawy by Eng. Aya, 9-Nov-2026), so they are always 100% in stock
 CREATE VIEW v_report4_stock AS
 SELECT
     dp.category,
@@ -130,7 +131,7 @@ SELECT
 FROM fact_price_daily fp
 JOIN dim_site    ds ON ds.site_key    = fp.site_key
 JOIN dim_product dp ON dp.product_key = fp.product_key
-WHERE ds.site_code <> 'jumia'
+WHERE ds.site_code NOT IN ('jumia', 'elghazawy')
 GROUP BY ROLLUP (dp.category, ds.site_code);
 
 -- 5. Report 5: our sales by category, governorate and week (CUBE). Synthetic sales.

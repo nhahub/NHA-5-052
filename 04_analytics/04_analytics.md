@@ -25,7 +25,7 @@ Prices are non-additive: use MIN / MAX / AVG, never SUM.
 
 > **Note (review of 3-Nov-2026):** the outputs below that show 3 products, 8 price rows or 108 sales lines were produced with the test seed (`05_etl/tests/fixtures/seed_mongo.py`, 8 hand-written offers), not with scraped data. Replace them with the outputs of a run on the real offers files before the final presentation. A review run on all the real daily files (27-Oct to 2-Nov-2026, 7,530 offers) gave: 7,508 price rows, **143 phones and 30 TVs on 2+ sites on 29-Oct** (the day with the three sites), 181 products sold by our store, 511 order items over 6 days. See `REVIEW_FIXES.md`.
 
-> The reports are now views (`v_report1_cheapest_site` … `v_report5_our_sales`, plus `mv_our_price_vs_market`): import these in Power BI. Reports 1, 2 and 6 use only products sold on 2+ sites the same day; reports 5 and 6 count delivered orders only; Jumia is left out of report 4 (always 100% in stock); XPRS has no old prices, so it has no discounts in report 3.
+> The reports are now views (`v_report1_cheapest_site` … `v_report5_our_sales`, plus `mv_our_price_vs_market`): import these in Power BI. Reports 1, 2 and 6 use only products sold on 2+ sites the same day; reports 5 and 6 count delivered orders only; Jumia and El Ghazawy are left out of report 4 (their listings show only items in stock, so they are always 100%); XPRS has no old prices, so it has no discounts in report 3.
 
 ### 1. Analytical SQL (H6)
 ```sql

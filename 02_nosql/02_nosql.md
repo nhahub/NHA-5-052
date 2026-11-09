@@ -146,7 +146,7 @@ Group used by the three queries:
 | 2026-10-27 | xprs | phone | 324 | 38,347 | 44.4% |
 | 2026-10-27 | xprs | tv | 21 | 40,861 | 100.0% |
 
-Notes: Jumia is always 100% in stock because its category pages only list items that can be bought. 27-Oct numbers were checked against the JSON files (same values).
+Notes: Jumia is always 100% in stock because its category pages only list items that can be bought. El Ghazawy is the same (checked 9-Nov-2026): a sold-out product disappears from the search pages; the site's "Not available items" filter shows sold-out products again but with no mark that tells them apart, so it is not used. A product missing from one day's file was sold out (or removed) that day. Report 4 (stock) therefore leaves out Jumia and El Ghazawy. 27-Oct numbers were checked against the JSON files (same values).
 
 Export (MongoDB Database Tools 100.20.0):
 ```
