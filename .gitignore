@@ -1,28 +1,31 @@
 # Python
-   __pycache__/
-   *.pyc
-   .venv/
-   venv/
+__pycache__/
+*.pyc
+.venv/
+venv/
 
-   # Secrets
-   .env
+# Secrets
+.env
 
-   # Raw and large data (keep only small samples in */data/)
-   **/data/raw/
-   *.tar
-   *.zip
+# Raw and large data (keep only small samples in */data/)
+**/data/raw/
+*.tar
+*.zip
 
-   # Airflow
-   logs/
-   airflow.db
-   airflow-webserver.pid
+# Airflow
+logs/
+airflow.db
+airflow-webserver.pid
 
-   # OS / editors
-   .DS_Store
-   Thumbs.db
-   .vscode/
-   .idea/
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
-   # Pipeline outputs (scraper snapshots, raw HTML) and local Airflow folders
-   /data/
-   /plugins/
+# Pipeline outputs (scraper snapshots, raw HTML) and local Airflow folders
+/data/
+/plugins/
+
+# Editor backups
+*.bak
