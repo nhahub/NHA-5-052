@@ -158,8 +158,12 @@ def test_prices_block_fails_without_retry():
     raised = {n.exc.func.id for n in ast.walk(fn)
               if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call) and isinstance(n.exc.func, ast.Name)}
     handlers = [h for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler)]
-    assert any(isinstance(h.type, ast.Name) and h.type.id == "BlockedError" for h in handlers), \
-        "_scrape must catch BlockedError"
+    caught = set()
+    for h in handlers:
+        types = h.type.elts if isinstance(h.type, ast.Tuple) else [h.type]
+        caught |= {t.id for t in types if isinstance(t, ast.Name)}
+    assert "BlockedError" in caught, "_scrape must catch BlockedError (HTTP 403)"
+    assert "RateLimitedError" in caught, "_scrape must catch RateLimitedError (HTTP 429 after the allowed waits)"
     assert "AirflowFailException" in raised, "_scrape must raise AirflowFailException on BlockedError"
 
 

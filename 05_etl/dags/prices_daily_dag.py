@@ -9,6 +9,8 @@ scraped (we never work around a block); its prices of 27-Oct to 1-Nov stay in th
 Failure rules (revised 3-Nov-2026 after the review):
   * a site that answers HTTP 403 (BlockedError) fails its task at once, WITHOUT retries: we never visit again a site
     that said no. Network errors and timeouts are still retried (retries=3).
+  * a site that keeps answering HTTP 429 after we waited as long as it asked (RateLimitedError, common.py) also fails
+    its task WITHOUT Airflow retries: it asked us to slow down, so we come back tomorrow (added 13-Nov-2026).
   * store_offers runs when the three extract tasks are finished, even if one failed (trigger_rule='all_done'),
     and stores the files that exist - one blocked site does not lose the day of the two others.
   * the quality check then fails the DAG if a site has fewer than 70% of its previous offers (a missing site = 0).
@@ -35,12 +37,13 @@ default_args = {"owner": "Nouran", "retries": 3, "retry_delay": timedelta(minute
 def _scrape(module_name):
     # imported inside the task, so the scheduler does not load the scrapers on every DAG parse
     def run(**_):
-        from common import BlockedError
+        from common import BlockedError, RateLimitedError
         module = __import__(module_name)
         try:
             return module.run(out_dir="/opt/airflow/data/offers")["offers_file"]
-        except BlockedError as error:
-            raise AirflowFailException(f"{module_name}: site blocked the scraper, no retry - {error}") from error
+        except (BlockedError, RateLimitedError) as error:
+            raise AirflowFailException(f"{module_name}: site blocked or rate-limited the scraper, no retry today - "
+                                       f"{error}") from error
     return run
 
 

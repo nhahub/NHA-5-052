@@ -65,6 +65,21 @@ in the same second as the previous ETL read was skipped. The ETL now reads only 
 | I9 | Tests froze weak choices | Removed the test that required INSERT IGNORE and the one that required the TODO; added outcome tests | `05_etl/tests/*` | all |
 | — | Leftover files | `matching.py.bak`, `__pycache__`, `logs/`, `_dag_test.txt` removed; SKELETON / TODO headers removed from finished files; reports are views for Power BI; report 3 measures day-over-day price changes with LAG | several | Mahmoud |
 
+## Added on 13-Nov-2026 (HTTP 429 on XPRS and Dream 2000)
+
+On 10-Nov both Shopify sites answered the first page, then HTTP 429 ("too many requests"), even after two days without scraping (reported by Eng. Aya). A 429 is not a block: the site asks us to slow down. The old `fetch()` retried it after 2, 4, 8 and 16 seconds, and Airflow retried the task 3 more times.
+
+| What | File | Owner |
+|---|---|---|
+| 5 seconds between requests on XPRS and Dream 2000 (was 1 second) | `02_nosql/scripts/scraper_xprs.py`, `scraper_dream2000.py` | Aya |
+| No request for an empty page after a page with fewer than 250 products (about half the requests) | same files | Aya |
+| HTTP 429: wait as long as the site asks (`Retry-After`; 60 s if it does not say), at most twice; then `RateLimitedError` = stop for the day. A site that asks for more than 5 minutes is left until tomorrow | `02_nosql/scripts/common.py` | Aya |
+| `RateLimitedError` fails the extract task without Airflow retries, like a 403; the other sites are still stored (`all_done`) | `05_etl/dags/prices_daily_dag.py`, test `test_prices_block_fails_without_retry` | Nouran |
+| Offline test of these rules (8 tests) | `02_nosql/tests/test_polite_fetch.py` | — |
+| Docs: README, 02_nosql.md, data dictionary v4.5 | | Mahmoud |
+
+Not done, on purpose: no browser-like User-Agent, no proxy or other network to avoid the limit. If the sites still answer 429 at 5 seconds, the day of that site is missing and the price check of that day fails; the prices already collected stay in the warehouse.
+
 ## Added on 9-Nov-2026 (review of the GitHub repo NHA-5-052, Jumia replaced, .py files only)
 
 The GitHub repository still held the skeleton of 26-Oct plus the files of 8-Nov (El Ghazawy scraper); this version is the complete code.

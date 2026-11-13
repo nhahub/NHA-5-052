@@ -23,6 +23,8 @@ from common import OUT_DIR, fetch, new_offer, run_dates, save_raw, parse_price, 
 SITE = "xprs"
 BASE_URL = "https://myxprs.com"
 MAX_PAGES = 40
+PAGE_SIZE = 250            # products.json?limit=250: a shorter page is the last one
+DELAY_SECONDS = 5.0       # 5 s between requests (13-Nov-2026; on 10-Nov the site answered HTTP 429 at 1 request per second)
 
 # site collection handle -> our category (phone / tv / ac)
 CATEGORIES = {
@@ -82,11 +84,12 @@ def to_offers(product, category_site, snapshot_date, scraped_at, raw_file):
 
 
 def scrape_category(handle, snapshot_date, scraped_at, out_dir, max_pages=MAX_PAGES):
-    """Read products.json page by page until a page is empty. READY."""
+    """Read products.json page by page; stop after a page with fewer than PAGE_SIZE products (no extra request
+    for an empty page)."""
     offers = []
     for page in range(1, max_pages + 1):
-        url = f"{BASE_URL}/collections/{handle}/products.json?limit=250&page={page}"
-        data = fetch(url, as_json=True)
+        url = f"{BASE_URL}/collections/{handle}/products.json?limit={PAGE_SIZE}&page={page}"
+        data = fetch(url, as_json=True, delay=DELAY_SECONDS)
         raw_file = save_raw(json.dumps(data, ensure_ascii=False), SITE, f"{handle}_page{page}.json", snapshot_date, out_dir)
         products = data.get("products", [])
         if not products:
@@ -94,6 +97,8 @@ def scrape_category(handle, snapshot_date, scraped_at, out_dir, max_pages=MAX_PA
         for p in products:
             offers += to_offers(p, handle, snapshot_date, scraped_at, raw_file)
         log.info("%s page %d: %d products", handle, page, len(products))
+        if len(products) < PAGE_SIZE:
+            break
     return offers
 
 

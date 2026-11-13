@@ -4,7 +4,9 @@
 > Fill each step with the command you ran, its output and a screenshot (`images/`).
 
 ## Polite scraping (all scrapers, already in `scripts/common.py`)
-One request per second on XPRS and Dream 2000, one every 2 seconds on El Ghazawy, one every 3-5 seconds on Jumia · HTTP 403 = stop (never work around a block) · User-Agent with the bot name and the contact in `SCRAPER_CONTACT` (`.env`) · raw pages kept under `data/offers/raw/<date>/<site>/`.
+One request every 5 seconds on XPRS and Dream 2000 (1 second until 10-Nov), one every 2 seconds on El Ghazawy, one every 3-5 seconds on Jumia · HTTP 403 = stop (never work around a block) · HTTP 429 = slow down: wait as long as the site asks (`Retry-After`, 60 s if it does not say), at most twice, then stop for the day (`RateLimitedError`; the DAG does not retry it) · User-Agent with the bot name and the contact in `SCRAPER_CONTACT` (`.env`) · raw pages kept under `data/offers/raw/<date>/<site>/`.
+
+**HTTP 429 on XPRS and Dream 2000 (10-Nov-2026):** both sites answered the first page, then HTTP 429 ("too many requests"), even after two days without scraping (Eng. Aya). 429 is not a block: the site asks us to slow down. The old `fetch()` retried a 429 after 2, 4, 8 and 16 seconds and Airflow retried the task 3 times, so we kept knocking. Changed 13-Nov-2026 (`scripts/common.py`, `scraper_xprs.py`, `scraper_dream2000.py`): 5 seconds between requests on the two Shopify sites, no request for an empty page after a short page (about half the requests), the wait the site asks for on a 429, and a stop for the day after two waits. Offline test: `tests/test_polite_fetch.py` (8 tests). We do not change the User-Agent, use a proxy or another network to avoid the limit.
 
 ## Sources: Jumia replaced by El Ghazawy (9-Nov-2026)
 Jumia answers **HTTP 403 since 2-Nov-2026**, so it is no longer scraped (we never work around a block). Its offers of 27-Oct, 29-Oct and 1-Nov stay in MongoDB and in the warehouse as price history. El Ghazawy (`scraper_elghazawy.py`, task A10) takes its place in `prices_daily_dag`:
@@ -40,7 +42,7 @@ All the code is in Python files (`scripts/*.py`), as the instructor asked: Airfl
 | El Ghazawy | `scripts/scraper_elghazawy.py` | `run(out_dir)` | `data/offers/offers_elghazawy_<date>.json` |
 
 To run one scraper by hand (from the repository folder): `python 02_nosql/scripts/scraper_elghazawy.py` (add `--sample` for the first 2 pages of each category only).
-Offline tests (no internet, no MongoDB): `python 02_nosql/tests/test_scraper_elghazawy.py` and `python 02_nosql/tests/test_mongo_load.py`.
+Offline tests (no internet, no MongoDB): `python 02_nosql/tests/test_scraper_elghazawy.py`, `python 02_nosql/tests/test_polite_fetch.py` and `python 02_nosql/tests/test_mongo_load.py`.
 
 Before 9-Nov the scrapers were run by hand in Colab (26-30 Oct) with the same code.
 

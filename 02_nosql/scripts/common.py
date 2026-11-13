@@ -1,8 +1,12 @@
 """
 common.py - helpers shared by the three scrapers (Module 02).        READY - tested, no change needed.
 
-  fetch(url)              polite GET: 1 request per second by default, identified User-Agent, retries with back-off;
-                          HTTP 403 = the site blocks us -> BlockedError at once, never retried or worked around
+  fetch(url)              polite GET: a pause before every request (1 s by default; each scraper sets its own),
+                          identified User-Agent, retries with back-off on network errors and HTTP 503;
+                          HTTP 403 = the site blocks us -> BlockedError at once, never retried or worked around;
+                          HTTP 429 = "too many requests, slow down" -> wait as long as the site asks (Retry-After,
+                          60 s if it does not say), at most 2 waits; still 429, or a wait longer than 5 minutes
+                          -> RateLimitedError: the scraper stops for the day (changed 13-Nov-2026)
   save_raw(...)           keeps the raw page / JSON of every run (raw/<date>/<site>/...)
   parse_price(text)       "EGP 28,899" / "28,899.00 LE" / "٢٨٬٨٩٩ ج.م" -> 28899.0
   run_dates()             snapshot_date (Cairo) and scraped_at (UTC), computed when a run starts
@@ -15,6 +19,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -35,22 +40,62 @@ class BlockedError(RuntimeError):
     """The site answered 403: it does not want this request. Stop; do not retry or try to get around it."""
 
 
+class RateLimitedError(RuntimeError):
+    """The site answered 429 (too many requests) even after waiting as long as it asked. Stop for today."""
+
+
+DEFAULT_429_WAIT = 60        # seconds, when the site sends no Retry-After
+MAX_429_WAIT = 300           # a site that asks for a longer wait is left alone until tomorrow
+MAX_429_WAITS = 2            # waits per request; the third 429 stops the scraper
+
+
+def retry_after_seconds(resp):
+    """Seconds the site asks us to wait (header Retry-After: '120' or an HTTP date), or None if it does not say."""
+    value = (resp.headers.get("Retry-After") or "").strip()
+    if not value:
+        return None
+    if value.isdigit():
+        return int(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0, int((when - datetime.now(timezone.utc)).total_seconds()))
+
+
 def fetch(url, retries=5, as_json=False, delay=DELAY_SECONDS):
-    """GET with a pause before each request, back-off on 429/503 and network errors. Raises after the last retry.
-    HTTP 403 raises BlockedError at once (no retry)."""
+    """GET with a pause before each request and back-off on 503 and network errors. Raises after the last retry.
+    HTTP 403 raises BlockedError at once (no retry).
+    HTTP 429 waits as long as the site asks (MAX_429_WAITS times at most), then raises RateLimitedError."""
     wait = 2
-    for attempt in range(1, retries + 1):
+    attempt = waits_429 = 0
+    while True:
+        attempt += 1
         time.sleep(delay)
         try:
             resp = session.get(url, timeout=30)
             if resp.status_code == 403:
                 raise BlockedError(f"HTTP 403 (blocked) on {url}")
-            if resp.status_code in (429, 503):
-                raise requests.HTTPError(f"HTTP {resp.status_code}")
+            if resp.status_code == 429:
+                asked = retry_after_seconds(resp)
+                pause = DEFAULT_429_WAIT if asked is None else asked
+                if waits_429 >= MAX_429_WAITS or pause > MAX_429_WAIT:
+                    raise RateLimitedError(f"HTTP 429 (too many requests) on {url}; the site asked to wait "
+                                           f"{asked if asked is not None else 'an unknown time'} s - stopping for today")
+                waits_429 += 1
+                log.warning("HTTP 429 on %s - the site asks us to slow down: waiting %s s (%d/%d)",
+                            url, pause, waits_429, MAX_429_WAITS)
+                time.sleep(pause)
+                attempt -= 1                       # a 429 wait is not a failed attempt
+                continue
+            if resp.status_code == 503:
+                raise requests.HTTPError("HTTP 503")
             resp.raise_for_status()
             return resp.json() if as_json else resp.text
         except (requests.RequestException, ValueError) as error:
-            if attempt == retries:
+            if attempt >= retries:
                 raise RuntimeError(f"Gave up on {url}: {error}") from error
             log.warning("Attempt %d/%d failed for %s: %s - waiting %ss", attempt, retries, url, error, wait)
             time.sleep(wait)

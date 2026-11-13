@@ -42,7 +42,7 @@ An electronics retailer wants to know **every day how its prices compare with th
 
 Scope: phones and TVs (air conditioners were dropped after the overlap test: only 6 products on 2+ sites). All amounts in Egyptian pounds (EGP). Every column is described in the [data dictionary](docs/data_dictionary.xlsx).
 
-**Polite scraping:** a User-Agent with the bot name and a contact address, one request per second on the JSON sites, one every 2 seconds on El Ghazawy (3–5 seconds on Jumia while it was scraped), raw pages kept for re-parsing. A site that answers HTTP 403 is never worked around: the scraper stops. Sites whose terms ban scraping, or that block bots, were excluded (B.TECH, 2B, Kimo Store and others).
+**Polite scraping:** a User-Agent with the bot name and a contact address, one request every 5 seconds on the JSON sites (XPRS and Dream 2000; 1 second until 10-Nov), one every 2 seconds on El Ghazawy (3–5 seconds on Jumia while it was scraped), raw pages kept for re-parsing. A site that answers HTTP 403 is never worked around: the scraper stops. HTTP 429 ("too many requests") is respected: the scraper waits as long as the site asks, and stops for the day if the site keeps refusing. Sites whose terms ban scraping, or that block bots, were excluded (B.TECH, 2B, Kimo Store and others).
 
 ## How the Integration Works
 
