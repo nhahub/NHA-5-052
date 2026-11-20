@@ -30,6 +30,12 @@ An electronics retailer wants to know **every day how its prices compare with th
 
 ![Architecture](docs/architecture.png)
 
+**Data sources overview:** each data source in one box — our store's daily CSV files, the price websites — and how they are stored, matched and loaded into the warehouse and the reports.
+
+![Data sources overview](docs/data_sources_overview_en.png)
+
+Arabic version: [docs/data_sources_overview.png](docs/data_sources_overview.png)
+
 ## Data Sources
 
 | Source | Access | Lands in | Notes |
@@ -65,6 +71,131 @@ Two fact tables share the same product and date dimensions:
 | `dim_product` · `dim_date` | shared by both facts |
 | `dim_site` · `dim_customer` · `product_map` | site, customer, offer-to-product map |
 
+### ERD — data warehouse (PostgreSQL `ecommerce_dw`)
+
+Main columns only; every column, type and CHECK rule is in [`03_dwh/scripts/schema.sql`](03_dwh/scripts/schema.sql) and the [data dictionary](docs/data_dictionary.xlsx). The dashed line is a logical link: a price row and its `product_map` row share `site_key` + `site_product_id`, but there is no foreign key between them.
+
+```mermaid
+erDiagram
+    dim_date     ||--o{ fact_price_daily : "price day"
+    dim_site     ||--o{ fact_price_daily : "site"
+    dim_product  ||--o{ fact_price_daily : "product"
+    dim_date     ||--o{ fact_sales       : "order day"
+    dim_customer ||--o{ fact_sales       : "customer"
+    dim_product  ||--o{ fact_sales       : "product sold"
+    dim_site     ||--o{ product_map      : "offers on the site"
+    dim_product  ||--|{ product_map      : "matched offers"
+    product_map  ||..o{ fact_price_daily : "same offer (no FK)"
+
+    dim_date {
+        int      date_key PK "20261114"
+        date     full_date UK
+        smallint iso_week
+        smallint month_num
+        smallint year
+        boolean  is_weekend "Fri and Sat"
+    }
+    dim_site {
+        smallint site_key PK
+        varchar  site_code UK "xprs, dream2000, jumia, elghazawy"
+        varchar  site_name
+        varchar  data_format "html or json"
+        boolean  is_marketplace
+        date     added_at
+    }
+    dim_customer {
+        int     customer_key PK
+        varchar customer_id UK
+        varchar governorate
+        varchar city
+        date    signup_date
+    }
+    dim_product {
+        int      product_key PK "our product id"
+        varchar  product_code UK "brand|category|model"
+        varchar  category "phone or tv"
+        varchar  brand
+        varchar  model_key
+        varchar  display_name
+        smallint ram_gb
+        smallint storage_gb
+        smallint screen_size_in
+    }
+    product_map {
+        smallint site_key PK, FK
+        varchar  site_product_id PK "Shopify id, SKU, site id"
+        int      product_key FK
+        varchar  match_method "ean, model_code, name_spec, manual, new"
+        varchar  match_key
+        varchar  url
+        date     last_seen_date
+    }
+    fact_price_daily {
+        bigint   price_key PK
+        int      date_key FK
+        smallint site_key FK
+        varchar  site_product_id "UK with date_key, site_key"
+        int      product_key FK
+        numeric  sale_price_egp "greater than 0"
+        numeric  original_price_egp
+        smallint discount_pct
+        boolean  in_stock
+    }
+    fact_sales {
+        bigint   sales_key PK
+        varchar  order_id "UK with item_no"
+        smallint item_no
+        int      date_key FK
+        int      customer_key FK
+        int      product_key FK
+        varchar  order_status "delivered, canceled, returned"
+        smallint quantity
+        numeric  unit_price_egp
+        numeric  line_total_egp "quantity x unit price"
+    }
+```
+
+### ERD — our store (MySQL `ecommerce_oltp`)
+
+Main columns only; the full definitions are in [`01_oltp/scripts/oltp.sql`](01_oltp/scripts/oltp.sql). `products.product_id` = `P` + `dim_product.product_key`, so a sold item points to the same product as the market prices.
+
+```mermaid
+erDiagram
+    customers ||--o{ orders      : "places"
+    orders    ||--|{ order_items : "contains"
+    products  ||--o{ order_items : "sold as"
+
+    customers {
+        varchar customer_id PK
+        varchar governorate
+        varchar city
+        date    signup_date
+    }
+    products {
+        varchar product_id PK "P + product_key"
+        varchar product_code UK "same key as dim_product"
+        varchar category "phone or tv"
+        varchar display_name
+        decimal list_price_egp "greater than 0"
+        tinyint is_active
+    }
+    orders {
+        varchar  order_id PK
+        varchar  customer_id FK
+        datetime order_purchase_ts "indexed"
+        varchar  order_status "delivered, canceled, returned"
+        varchar  payment_method
+        timestamp loaded_at "ETL watermark"
+    }
+    order_items {
+        varchar  order_id PK, FK
+        smallint item_no PK
+        varchar  product_id FK
+        smallint quantity "greater than 0"
+        decimal  unit_price_egp "greater than 0"
+    }
+```
+
 Six reports: cheapest site per product, price spread between sites, discounts over time, stock availability, our sales (synthetic), and **our price against the lowest market price** with the units we sold.
 
 ## Tools and Technologies
@@ -88,7 +219,7 @@ ecommerce-data-pipeline/
 ├── 01_oltp/          # MySQL: oltp.sql, generate_sales.py, load_batch.py, datadump.sh, backups/
 ├── 02_nosql/         # MongoDB: common.py, scrapers (XPRS, Dream 2000, El Ghazawy; Jumia until 1-Nov), mongo_load.py, overlap_test.py, tests/
 ├── 03_dwh/           # PostgreSQL: schema.sql, ERD
-├── 04_analytics/     # analysis_queries.sql, Power BI dashboard
+├── 04_analytics/     # analysis_queries.sql, Dashboard/ (Power BI .pbix and PDF)
 ├── 05_etl/           # matching.py, load_prices.py, automation.py, quality_checks.py, DAGs, config/ (matching lists)
 ├── docs/             # data_dictionary.xlsx, proposal.pdf, architecture.png
 ├── docker-compose.yaml · .env.example · requirements.txt · .gitignore
@@ -111,7 +242,7 @@ The 36 tasks, owners, due dates and dependencies are in the project tracker (sha
 
 ## Current Status
 
-Last updated: 9-Nov-2026 (Jumia replaced by El Ghazawy; all code in `.py` files; fixes after the technical review, see [REVIEW_FIXES.md](REVIEW_FIXES.md)). Design approved by the instructor on 24-Oct-2026. Overlap test done on 25-Oct-2026.
+Last updated: 20-Nov-2026 (Power BI dashboard added on a first data snapshot). 9-Nov-2026: Jumia replaced by El Ghazawy; all code in `.py` files; fixes after the technical review, see [REVIEW_FIXES.md](REVIEW_FIXES.md). Design approved by the instructor on 24-Oct-2026. Overlap test done on 25-Oct-2026.
 
 | Part | Status |
 |---|---|
@@ -122,7 +253,8 @@ Last updated: 9-Nov-2026 (Jumia replaced by El Ghazawy; all code in `.py` files;
 | Scrapers, matching, price and sales ETL, generator, schemas, DAGs, SQL report views | Done — tested end to end on the real daily files of 27-Oct to 2-Nov-2026: 143 phones and 30 TVs on 2+ sites on 29-Oct |
 | Matching levels 2–3: crosswalk view, matching status view, manual matching tool (`match_review.py`) | Done (6-Nov-2026) |
 | El Ghazawy scraper (`scraper_elghazawy.py`) in place of Jumia | Done (8-Nov-2026), brand and price fixes and offline test 9-Nov; first daily run in Airflow still to do |
-| Daily price history in the warehouse, Power BI dashboard, module guides with real outputs | To do (see the action plan in the review) |
+| Power BI dashboard — six pages, one per report (`04_analytics/Dashboard/`, `.pbix` and PDF) | Done (20-Nov-2026) on a first snapshot of the warehouse: prices of 31-Oct (XPRS, Dream 2000) and 14-Nov (El Ghazawy), sales of 31-Oct — see [04_analytics.md](04_analytics/04_analytics.md) |
+| Daily price history in the warehouse (then refresh the dashboard), module guides with real outputs | To do |
 
 ## How to Run
 
@@ -132,7 +264,7 @@ Last updated: 9-Nov-2026 (Jumia replaced by El Ghazawy; all code in `.py` files;
 4. Load the offers already scraped (set `MONGO_USER` and `MONGO_PASSWORD` from `.env` first): `python 02_nosql/scripts/mongo_load.py "data/offers/offers_*.json"`.
 5. Unpause `prices_daily_dag` and `sales_daily_dag` in Airflow. The sales DAG creates `customers.csv` once and rebuilds `products.csv` from the products found on 2+ sites at every run.
 6. Once a week: `python 05_etl/scripts/match_review.py export`, review the file, then `... import <file> --by "<name>" --apply-db` (see `05_etl/05_etl.md`).
-7. Open the Power BI dashboard from `04_analytics/dashboard/` (the `.pbix` file is still to be added).
+7. Open the Power BI dashboard `04_analytics/Dashboard/ecommerce_dashboard.pbix` (or the PDF next to it). It reads `localhost:5432`; for the Docker warehouse change the source to `localhost:5433` (Transform data → Data source settings).
 
 > Detailed, tested steps will be completed in Week 4.
 
