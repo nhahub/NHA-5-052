@@ -100,5 +100,87 @@ E:\project-nha5\ecommerce-data-pipeline-main\03_dwh\images\erd.png  103670
 The ERD shows: `product_map → dim_site`, `product_map → dim_product`, `fact_price_daily → dim_date / dim_site / dim_product`,
 `fact_sales → dim_date / dim_customer / dim_product`, plus the 3 analysis views and the materialized view.
 
+The same ERD as a diagram that GitHub draws from text (main columns; the dashed line = same offer, no foreign key):
+
+```mermaid
+erDiagram
+    dim_date     ||--o{ fact_price_daily : "price day"
+    dim_site     ||--o{ fact_price_daily : "site"
+    dim_product  ||--o{ fact_price_daily : "product"
+    dim_date     ||--o{ fact_sales       : "order day"
+    dim_customer ||--o{ fact_sales       : "customer"
+    dim_product  ||--o{ fact_sales       : "product sold"
+    dim_site     ||--o{ product_map      : "offers on the site"
+    dim_product  ||--|{ product_map      : "matched offers"
+    product_map  ||..o{ fact_price_daily : "same offer (no FK)"
+
+    dim_date {
+        int      date_key PK "20261114"
+        date     full_date UK
+        smallint iso_week
+        smallint month_num
+        smallint year
+        boolean  is_weekend "Fri and Sat"
+    }
+    dim_site {
+        smallint site_key PK
+        varchar  site_code UK "xprs, dream2000, jumia, elghazawy"
+        varchar  site_name
+        varchar  data_format "html or json"
+        boolean  is_marketplace
+        date     added_at
+    }
+    dim_customer {
+        int     customer_key PK
+        varchar customer_id UK
+        varchar governorate
+        varchar city
+        date    signup_date
+    }
+    dim_product {
+        int      product_key PK "our product id"
+        varchar  product_code UK "brand|category|model"
+        varchar  category "phone or tv"
+        varchar  brand
+        varchar  model_key
+        varchar  display_name
+        smallint ram_gb
+        smallint storage_gb
+        smallint screen_size_in
+    }
+    product_map {
+        smallint site_key PK, FK
+        varchar  site_product_id PK "Shopify id, SKU, site id"
+        int      product_key FK
+        varchar  match_method "ean, model_code, name_spec, manual, new"
+        varchar  match_key
+        varchar  url
+        date     last_seen_date
+    }
+    fact_price_daily {
+        bigint   price_key PK
+        int      date_key FK
+        smallint site_key FK
+        varchar  site_product_id "UK with date_key, site_key"
+        int      product_key FK
+        numeric  sale_price_egp "greater than 0"
+        numeric  original_price_egp
+        smallint discount_pct
+        boolean  in_stock
+    }
+    fact_sales {
+        bigint   sales_key PK
+        varchar  order_id "UK with item_no"
+        smallint item_no
+        int      date_key FK
+        int      customer_key FK
+        int      product_key FK
+        varchar  order_status "delivered, canceled, returned"
+        smallint quantity
+        numeric  unit_price_egp
+        numeric  line_total_egp "quantity x unit price"
+    }
+```
+
 ## Deliverables
 - [x] `schema.sql` · [x] `images/erd.png` · [ ] screenshots of the tables and counts (to add)

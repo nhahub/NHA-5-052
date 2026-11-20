@@ -141,6 +141,17 @@ verified by the direct N3 run above.
 ### 5. Failure tests (N7 with H7)
 Site unreachable · bad batch · database down — show the FAILED task, the retries and the `failed` row in `etl_state`.
 
+| # | Failure | Where | Data |
+|---|---|---|---|
+| 1 | bad batch (missing dimension) | `automation.py` run by hand | test seed (8 hand-written offers) |
+| 2 | MySQL down | `automation.py` run by hand | test seed — to be repeated on real data |
+| 3 | site blocks the scraper (HTTP 403) | Jumia, 27-Oct-2026 | real |
+| 4 | site rate-limits the scraper (HTTP 429) | Airflow, `prices_daily_dag`, 14-Nov-2026 | real |
+| 5 | the same day loaded three times | Airflow, `prices_daily_dag`, 14-Nov-2026 | real |
+| 6 | sales of a day with no market prices | Airflow, `sales_daily_dag`, 14-Nov-2026 | real |
+
+Tests 1 and 2 were run on the test seed (`05_etl/tests/fixtures/seed_mongo.py`), not on scraped data. Tests 4 to 6 come from the Airflow logs of the Docker stack (Eng. Nouran's machine, 14-Nov-2026); times are UTC.
+
 **Test 1 — bad batch (missing dimension):** insert a product in MySQL whose `product_code` does not exist in `dim_product`, run `automation.py`:
 ```
 ValueError: Missing dimensions (first 5): [('product', 'test|product|missing')]
@@ -180,5 +191,54 @@ Full etl_state after both tests:
       7 | orders_incremental | failed  |            | (mysql.connector.errors.DatabaseError) 2003 (HY000
 ```
 
+**Test 4 — site rate-limits the scraper (HTTP 429), real, `prices_daily_dag` 14-Nov-2026:**
+XPRS and Dream 2000 answered HTTP 429 on the third request of every run from this network. The scraper waited 60 s twice, then stopped for the day; Airflow failed the task at once, with no retry (only `attempt=1.log` exists), and El Ghazawy went on alone:
+```
+[13:30:46] scraper_xprs.py  INFO    mobile-phones-egypt page 1: 76 products
+[13:30:52] scraper_xprs.py  INFO    32-inch-tv page 1: 4 products
+[13:30:57] common.py        WARNING HTTP 429 on https://myxprs.com/collections/43-inch-tv/products.json?limit=250&page=1 - the site asks us to slow down: waiting 60 s (1/2)
+[13:32:02] common.py        WARNING HTTP 429 on ... waiting 60 s (2/2)
+common.RateLimitedError: HTTP 429 (too many requests) on .../43-inch-tv/products.json?limit=250&page=1; the site asked to wait 60 s - stopping for today
+airflow.exceptions.AirflowFailException: scraper_xprs: site blocked or rate-limited the scraper, no retry today - ...
+[13:33:07] taskinstance.py  INFO    Immediate failure requested. Marking task as FAILED. task_id=extract_xprs
+
+extract_dream2000      FAILED   (same: HTTP 429 on /collections/lg-tvs, 60 s x 2, stopped)
+extract_elghazawy      SUCCESS  Done: 350 offers -> /opt/airflow/data/offers/offers_elghazawy_2026-11-14.json
+store_offers_mongodb   SUCCESS  Loaded {'read': 350, 'offers': 350, 'quarantine': 0, 'refused': 0}   (trigger_rule all_done)
+validate_match_load_prices SUCCESS  2026-11-14 -> 350 offers, 350 inserted
+quality_check          SUCCESS  Price check OK for 2026-11-14: 350 rows, 199 products, 0 (0.0%) on 2+ sites
+```
+What this shows: a site that asks us to slow down is not retried the same day; the offers of that site are not half-written (no `offers_xprs_2026-11-14.json` was produced); the other sites are still loaded. The scrape was then moved to one fixed machine (Mahmoud's), where the same scrapers ran without HTTP 429 on 13-Nov and 20-Nov-2026 (XPRS 259, Dream 2000 594, El Ghazawy 349 offers on 20-Nov).
+
+**Test 5 — the same day loaded three times (idempotent load), real, 14-Nov-2026:**
+`prices_daily_dag` ran three times on 14-Nov (scheduled run at 13:30, manual runs at 13:30:44 and 13:42:47). Each run scraped El Ghazawy again and loaded the same 350 offers:
+```
+[13:33:10] load_prices.py  INFO  2026-11-14 -> 350 offers, 350 inserted, checksum=9963676.00
+[13:35:42] load_prices.py  INFO  2026-11-14 -> 350 offers, 0 inserted, checksum=0.00
+[13:45:18] load_prices.py  INFO  2026-11-14 -> 350 offers, 0 inserted, checksum=0.00
+```
+In the warehouse (copy of 18-Nov-2026) the day still has 350 price rows, all from the first run: the unique key `(date_key, site_key, site_product_id)` of `fact_price_daily` stops duplicates.
+
+**Test 6 — sales of a day with no market prices, real, `sales_daily_dag` 14-Nov-2026:**
+`generate_sales.py` stops on purpose when the warehouse has no market price for the day (`No market prices in fact_price_daily for <day>: run the price ETL for that day first.`) and when no product is sold on 2+ sites yet. Airflow retried every 10 minutes (`retries: 3`, `retry_delay: 10 min`):
+```
+refresh_reference_data  (run 13-Nov)  attempt 1 13:30 UP_FOR_RETRY · attempt 2 13:40 UP_FOR_RETRY · attempt 3 13:50 UP_FOR_RETRY
+                                      -> the prices of 31-Oct (XPRS + Dream 2000, the first day with products on 2+ sites)
+                                         were loaded at 13:53 (etl_state run 4, 952 rows)
+                                      -> task cleared, SUCCESS at 14:14
+generate_orders_csv     (run 1-Nov)   14:05 UP_FOR_RETRY   (no prices of 1-Nov in the warehouse)
+generate_orders_csv     (run 13-Nov)  14:14, 14:25 UP_FOR_RETRY   (no prices of 13-Nov in the warehouse)
+generate_orders_csv ... quality_check (run 31-Oct)  SUCCESS: Sales check OK for 2026-10-31: 104 rows, total_egp=2628129.41
+```
+No orders were written for 1-Nov or 13-Nov, so `fact_sales` holds only 31-Oct (104 rows). Limitation found: the Airflow log shows only `returned non-zero exit status 1`, not the script's message, because the DAG runs `generate_sales.py` with `subprocess`; importing the function instead (as the instructor suggested) would put the message in the log.
+
+**Real warehouse after tests 4 to 6** (copy of 18-Nov-2026):
+```
+ fact_price_daily | 1302   (31-Oct: XPRS 371, Dream 2000 581 · 14-Nov: El Ghazawy 350)
+ fact_sales       |  104   (31-Oct)
+ dim_product      |  382
+ dim_customer     | 3000
+```
+
 ## Deliverables
-- [x] matching, price and sales ETL · [x] two DAGs with green runs (sales_daily_dag tested end-to-end; prices_daily_dag logic verified by direct N3 run) · [x] failure-test log (2 synthetic + 1 real from 02_nosql) · [ ] `images/`
+- [x] matching, price and sales ETL · [x] two DAGs with green runs (sales_daily_dag tested end-to-end; prices_daily_dag logic verified by direct N3 run) · [x] failure-test log (tests 1–2 on the test seed, tests 3–6 real) · [ ] test 2 (MySQL down) repeated on real data · [ ] `images/`

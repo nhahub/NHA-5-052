@@ -51,6 +51,45 @@ SELECT table_name, table_collation FROM information_schema.tables WHERE table_sc
 +------------+--------------------+
 ```
 
+### ERD
+
+```mermaid
+erDiagram
+    customers ||--o{ orders      : "places"
+    orders    ||--|{ order_items : "contains"
+    products  ||--o{ order_items : "sold as"
+
+    customers {
+        varchar customer_id PK
+        varchar governorate
+        varchar city
+        date    signup_date
+    }
+    products {
+        varchar product_id PK "P + product_key"
+        varchar product_code UK "same key as dim_product"
+        varchar category "phone or tv"
+        varchar display_name
+        decimal list_price_egp "greater than 0"
+        tinyint is_active
+    }
+    orders {
+        varchar  order_id PK
+        varchar  customer_id FK
+        datetime order_purchase_ts "indexed"
+        varchar  order_status "delivered, canceled, returned"
+        varchar  payment_method
+        timestamp loaded_at "ETL watermark"
+    }
+    order_items {
+        varchar  order_id PK, FK
+        smallint item_no PK
+        varchar  product_id FK
+        smallint quantity "greater than 0"
+        decimal  unit_price_egp "greater than 0"
+    }
+```
+
 ### 2. Generate the customers (H4)
 `python 01_oltp/scripts/generate_sales.py customers` — write the generator settings (CONFIG) used here.
 
