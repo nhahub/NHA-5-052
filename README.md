@@ -73,7 +73,9 @@ Two fact tables share the same product and date dimensions:
 
 ### ERD — data warehouse (PostgreSQL `ecommerce_dw`)
 
-Main columns only; every column, type and CHECK rule is in [`03_dwh/scripts/schema.sql`](03_dwh/scripts/schema.sql) and the [data dictionary](docs/data_dictionary.xlsx). The dashed line is a logical link: a price row and its `product_map` row share `site_key` + `site_product_id`, but there is no foreign key between them.
+![Data warehouse ERD](docs/erd_dw.png)
+
+The image shows every column and key of the 8 tables. The diagram below shows the main columns only; every column, type and CHECK rule is in [`03_dwh/scripts/schema.sql`](03_dwh/scripts/schema.sql) and the [data dictionary](docs/data_dictionary.xlsx). The dashed line is a logical link: a price row and its `product_map` row share `site_key` + `site_product_id`, but there is no foreign key between them.
 
 ```mermaid
 erDiagram
