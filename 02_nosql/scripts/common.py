@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-DELAY_SECONDS = 1.0                      # one request per second on every site
+DELAY_SECONDS = 1.0                      # default only: each scraper passes its own delay (XPRS and Dream 2000 5 s, El Ghazawy 2 s, Jumia 4 s)
 CONTACT = os.getenv("SCRAPER_CONTACT", "team-email@example.com")
 USER_AGENT = f"DEPI-Student-PriceBot/1.0 (educational project; contact: {CONTACT})"
 OUT_DIR = Path(os.getenv("SCRAPER_OUT_DIR", "data/offers"))

@@ -224,6 +224,7 @@ ecommerce-data-pipeline/
 ├── 04_analytics/     # analysis_queries.sql, Dashboard/ (Power BI .pbix and PDF)
 ├── 05_etl/           # matching.py, load_prices.py, automation.py, quality_checks.py, DAGs, config/ (matching lists)
 ├── docs/             # data_dictionary.xlsx, proposal.pdf, architecture.png
+├── sample_data/      # one real day of offers (20-Nov-2026, XPRS · Dream 2000 · El Ghazawy) to test without scraping
 ├── docker-compose.yaml · .env.example · requirements.txt · .gitignore
 └── README.md
 ```
@@ -263,7 +264,7 @@ Last updated: 20-Nov-2026 (Power BI dashboard added on a first data snapshot). 9
 1. Clone the repository and copy `.env.example` to `.env` (set `SCRAPER_CONTACT`).
 2. `docker compose up -d` — Airflow UI at http://localhost:8081.
 3. Create the databases: `01_oltp/scripts/oltp.sql` (MySQL), `03_dwh/scripts/schema.sql` then `05_etl/scripts/etl_state.sql`, `05_etl/scripts/matching_views.sql` and `04_analytics/scripts/analysis_queries.sql` (PostgreSQL).
-4. Load the offers already scraped (set `MONGO_USER` and `MONGO_PASSWORD` from `.env` first): `python 02_nosql/scripts/mongo_load.py "data/offers/offers_*.json"`.
+4. Load offers into MongoDB (set `MONGO_USER` and `MONGO_PASSWORD` from `.env` first). The daily offers files are not stored in the repository (`data/` is in `.gitignore`): the scrapers (`python 02_nosql/scripts/scraper_<site>.py`) and `prices_daily_dag` write them to `data/offers/`. To try the pipeline without scraping, load the sample day in [`sample_data/offers/`](sample_data/offers/) (20-Nov-2026, the three sites): `python 02_nosql/scripts/mongo_load.py "sample_data/offers/offers_*.json"`.
 5. Unpause `prices_daily_dag` and `sales_daily_dag` in Airflow. The sales DAG creates `customers.csv` once and rebuilds `products.csv` from the products found on 2+ sites at every run.
 6. Once a week: `python 05_etl/scripts/match_review.py export`, review the file, then `... import <file> --by "<name>" --apply-db` (see `05_etl/05_etl.md`).
 7. Open the Power BI dashboard `04_analytics/Dashboard/ecommerce_dashboard.pbix` (or the PDF next to it). It reads `localhost:5432`; for the Docker warehouse change the source to `localhost:5433` (Transform data → Data source settings).
