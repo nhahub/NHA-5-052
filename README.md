@@ -245,7 +245,7 @@ The 36 tasks, owners, due dates and dependencies are in the project tracker (sha
 
 ## Current Status
 
-Last updated: 20-Nov-2026 (Power BI dashboard added on a first data snapshot). 9-Nov-2026: Jumia replaced by El Ghazawy; all code in `.py` files; fixes after the technical review, see [REVIEW_FIXES.md](REVIEW_FIXES.md). Design approved by the instructor on 24-Oct-2026. Overlap test done on 25-Oct-2026.
+Last updated: 24-Nov-2026 (the stack runs every day on the team's Azure VM; Power BI reads its warehouse). 20-Nov-2026: Power BI dashboard added. 9-Nov-2026: Jumia replaced by El Ghazawy; all code in `.py` files; fixes after the technical review, see [REVIEW_FIXES.md](REVIEW_FIXES.md). Design approved by the instructor on 24-Oct-2026. Overlap test done on 25-Oct-2026.
 
 | Part | Status |
 |---|---|
@@ -255,9 +255,10 @@ Last updated: 20-Nov-2026 (Power BI dashboard added on a first data snapshot). 9
 | MongoDB loader (`mongo_load.py`) | Ready — offline test passes (15 checks) |
 | Scrapers, matching, price and sales ETL, generator, schemas, DAGs, SQL report views | Done — tested end to end on the real daily files of 27-Oct to 2-Nov-2026: 143 phones and 30 TVs on 2+ sites on 29-Oct |
 | Matching levels 2–3: crosswalk view, matching status view, manual matching tool (`match_review.py`) | Done (6-Nov-2026) |
-| El Ghazawy scraper (`scraper_elghazawy.py`) in place of Jumia | Done (8-Nov-2026), brand and price fixes and offline test 9-Nov; first daily run in Airflow still to do |
-| Power BI dashboard — six pages, one per report (`04_analytics/Dashboard/`, `.pbix` and PDF) | Done (20-Nov-2026) on a first snapshot of the warehouse: prices of 31-Oct (XPRS, Dream 2000) and 14-Nov (El Ghazawy), sales of 31-Oct — see [04_analytics.md](04_analytics/04_analytics.md) |
-| Daily price history in the warehouse (then refresh the dashboard), module guides with real outputs | To do |
+| El Ghazawy scraper (`scraper_elghazawy.py`) in place of Jumia | Done (8-Nov-2026), brand and price fixes and offline test 9-Nov; daily in Airflow on the Azure VM since 24-Nov |
+| Daily run on the Azure VM (Docker stack, `prices_daily_dag` 06:00 and `sales_daily_dag` 08:00 Cairo) | Running since 24-Nov-2026: prices of 31-Oct, 13, 14, 20, 23, 24-Nov loaded (4,887 rows; 134 products on 2+ sites on 20 and 24-Nov, the days with the three sites), sales of 31-Oct, 13, 20, 23-Nov |
+| Power BI dashboard — six pages, one per report (`04_analytics/Dashboard/`, `.pbix` and PDF) | Done; reads the VM warehouse since 24-Nov-2026 — see [04_analytics.md](04_analytics/04_analytics.md) |
+| Module guides with real outputs, Airflow screenshots | To do |
 
 ## How to Run
 
@@ -267,7 +268,7 @@ Last updated: 20-Nov-2026 (Power BI dashboard added on a first data snapshot). 9
 4. Load offers into MongoDB (set `MONGO_USER` and `MONGO_PASSWORD` from `.env` first). The daily offers files are not stored in the repository (`data/` is in `.gitignore`): the scrapers (`python 02_nosql/scripts/scraper_<site>.py`) and `prices_daily_dag` write them to `data/offers/`. To try the pipeline without scraping, load the sample day in [`sample_data/offers/`](sample_data/offers/) (20-Nov-2026, the three sites): `python 02_nosql/scripts/mongo_load.py "sample_data/offers/offers_*.json"`.
 5. Unpause `prices_daily_dag` and `sales_daily_dag` in Airflow. The sales DAG creates `customers.csv` once and rebuilds `products.csv` from the products found on 2+ sites at every run.
 6. Once a week: `python 05_etl/scripts/match_review.py export`, review the file, then `... import <file> --by "<name>" --apply-db` (see `05_etl/05_etl.md`).
-7. Open the Power BI dashboard `04_analytics/Dashboard/ecommerce_dashboard.pbix` (or the PDF next to it). It reads `localhost:5432`; for the Docker warehouse change the source to `localhost:5433` (Transform data → Data source settings).
+7. Open the Power BI dashboard `04_analytics/Dashboard/ecommerce_dashboard.pbix` (or the PDF next to it). It reads `localhost:5433` (the Docker warehouse; on the Azure VM, through a VS Code port forward) and is updated with *Home → Refresh*.
 
 > Detailed, tested steps will be completed in Week 4.
 
