@@ -245,7 +245,11 @@ The 36 tasks, owners, due dates and dependencies are in the project tracker (sha
 
 ## Current Status
 
-Last updated: 24-Nov-2026 (the stack runs every day on the team's Azure VM; Power BI reads its warehouse). 20-Nov-2026: Power BI dashboard added. 9-Nov-2026: Jumia replaced by El Ghazawy; all code in `.py` files; fixes after the technical review, see [REVIEW_FIXES.md](REVIEW_FIXES.md). Design approved by the instructor on 24-Oct-2026. Overlap test done on 25-Oct-2026.
+Last updated: 28-Nov-2026
+Prices loaded: 31-Oct, 13, 14, 20, 23, 24, 25, 26, 27, 28-Nov (10 days, 9,356 rows).
+Products matched on 2+ sites: 120-136 per day (on the 6 days with all 3 sites).
+Sales loaded through 27-Nov: 652 order lines.
+Airflow screenshots: done (05_etl/images).
 
 | Part | Status |
 |---|---|
