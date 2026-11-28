@@ -120,7 +120,19 @@ SELECT pipeline, status, batch_id, rows_in, rows_out, checksum FROM etl_state OR
 ```
 
 ### 4. DAGs (N5, N6)
-Screenshots: DAG list, graph view, a green run, the logs, and `SELECT * FROM etl_state ORDER BY run_id DESC;`.
+**Screenshots of the daily runs on the Azure VM (28-Nov-2026):** both DAGs run by themselves, with no manual trigger.
+
+| # | Screenshot | What it shows |
+|---|---|---|
+| 1 | ![DAG list](images/airflow_01_dags_list.png) | Both DAGs are active: 0 running, 0 failed. `prices_daily_dag` runs at 06:00 and `sales_daily_dag` at 08:00 (Cairo time). |
+| 2 | ![Prices grid](images/airflow_02_prices_grid.png) | Grid view of `prices_daily_dag`: 5 runs, all 6 tasks green, about 1 minute 8 seconds per run. |
+| 3 | ![Prices graph](images/airflow_03_prices_graph.png) | Graph view: three extract tasks in parallel, then `store_offers_mongodb`, `validate_match_load_prices` and `quality_check`. All `success`. |
+| 4 | ![Sales graph](images/airflow_04_sales_graph.png) | Graph view of `sales_daily_dag`: six tasks in a chain, all `success`. |
+| 5 | ![Audit log of one run](images/airflow_05_prices_run_audit_log.png) | Audit log of the run of 28-Nov: it started at 04:00:01 UTC (06:00 Cairo, the scheduled time) and all six tasks succeeded by 04:01:07. |
+
+Airflow names a run after the start of its data interval, so the run named `2026-11-27 04:00 UTC` is the one that started on 28-Nov at 04:00 UTC. Times in the Airflow screens are UTC; Cairo is UTC+2 in November.
+
+To see the loads of every run: `SELECT * FROM etl_state ORDER BY run_id DESC;`
 ```
 # sales_daily_dag test (proves the whole chain runs end-to-end with the real quality_check)
 airflow dags test sales_daily_dag "2026-10-31T08:00:00+02:00"
